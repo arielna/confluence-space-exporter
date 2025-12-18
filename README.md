@@ -44,6 +44,20 @@ python confluence_export.py \
 | `--url` | Confluence site URL | `https://centrica-bs.atlassian.net` |
 | `--space` | Space key to export | `ISDops` |
 | `--output` | Output directory | `./confluence_export` |
+| `--since` | Only export pages modified since this date (YYYY-MM-DD) | (all pages) |
+
+### Export Only Recent Changes
+
+To export only pages modified after a specific date:
+
+```bash
+python confluence-exporter.py \
+  --username your.email@company.com \
+  --token YOUR_API_TOKEN \
+  --since 2024-06-01
+```
+
+This is useful for incremental backups or exporting recent updates only.
 
 ## Output Structure
 

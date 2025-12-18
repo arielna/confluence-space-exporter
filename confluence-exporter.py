@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import argparse
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
@@ -54,7 +55,7 @@ def sanitize_filename(name: str) -> str:
 
 
 class ConfluenceExporter:
-    def __init__(self, url: str, username: str, api_token: str, space_key: str, output_dir: str):
+    def __init__(self, url: str, username: str, api_token: str, space_key: str, output_dir: str, since_date: datetime = None):
         self.confluence = Confluence(
             url=url,
             username=username,
@@ -65,37 +66,59 @@ class ConfluenceExporter:
         self.output_dir = Path(output_dir)
         self.pages_by_id = {}
         self.page_paths = {}  # Maps page ID to its folder path
+        self.since_date = since_date
         
     def fetch_all_pages(self) -> list:
         """Fetch all pages from the space with their content."""
         print(f"Fetching pages from space '{self.space_key}'...")
-        
+
         all_pages = []
         start = 0
         limit = 50
-        
+
         while True:
             pages = self.confluence.get_all_pages_from_space(
                 self.space_key,
                 start=start,
                 limit=limit,
-                expand='body.storage,ancestors,children.page,metadata.labels'
+                expand='body.storage,ancestors,children.page,metadata.labels,version'
             )
-            
+
             if not pages:
                 break
-                
+
             all_pages.extend(pages)
             print(f"  Fetched {len(all_pages)} pages...")
-            
+
             if len(pages) < limit:
                 break
             start += limit
-        
+
         # Index pages by ID
         for page in all_pages:
             self.pages_by_id[page['id']] = page
-            
+
+        # Filter by date if specified
+        if self.since_date:
+            filtered_pages = []
+            for page in all_pages:
+                modified_str = page.get('version', {}).get('when', '')
+                if modified_str:
+                    # Parse ISO format: 2024-01-02T13:25:33.000Z
+                    try:
+                        modified_date = datetime.fromisoformat(modified_str.replace('Z', '+00:00'))
+                        since_aware = self.since_date.replace(tzinfo=modified_date.tzinfo)
+                        if modified_date >= since_aware:
+                            filtered_pages.append(page)
+                    except ValueError:
+                        # If date parsing fails, include the page
+                        filtered_pages.append(page)
+                else:
+                    filtered_pages.append(page)
+
+            print(f"Pages modified since {self.since_date.date()}: {len(filtered_pages)} of {len(all_pages)}")
+            return filtered_pages
+
         print(f"Total pages found: {len(all_pages)}")
         return all_pages
     
@@ -104,7 +127,7 @@ class ConfluenceExporter:
         # Find root pages (no ancestors in this space)
         roots = []
         children_map = {}  # parent_id -> list of child pages
-        
+
         for page in pages:
             ancestors = page.get('ancestors', [])
             if not ancestors:
@@ -112,10 +135,14 @@ class ConfluenceExporter:
             else:
                 # Find the immediate parent (last ancestor)
                 parent_id = ancestors[-1]['id']
-                if parent_id not in children_map:
-                    children_map[parent_id] = []
-                children_map[parent_id].append(page)
-        
+                # If parent is not in this space, treat as root
+                if parent_id not in self.pages_by_id:
+                    roots.append(page)
+                else:
+                    if parent_id not in children_map:
+                        children_map[parent_id] = []
+                    children_map[parent_id].append(page)
+
         return {'roots': roots, 'children_map': children_map}
     
     def determine_page_paths(self, hierarchy: dict):
@@ -204,22 +231,22 @@ class ConfluenceExporter:
         
         return md_content
     
-    def handle_drawio_embeds(self, html_content: str, page_path: Path) -> str:
+    def handle_drawio_embeds(self, html_content: str) -> str:
         """
         Handle embedded draw.io diagrams.
         Draw.io in Confluence often uses ac:structured-macro with specific attributes.
         """
         # Draw.io embeds are typically referenced via attachment, which we already download
         # But we can add a note in the markdown where they appear
-        
+
         # Pattern for draw.io macros
         drawio_pattern = r'<ac:structured-macro[^>]*ac:name="drawio"[^>]*>.*?</ac:structured-macro>'
-        
-        def replace_drawio(match):
+
+        def replace_drawio(_match):
             return '\n\n> 📊 **Draw.io Diagram** - See attachments folder for `.drawio` file\n\n'
-        
+
         html_content = re.sub(drawio_pattern, replace_drawio, html_content, flags=re.DOTALL)
-        
+
         return html_content
     
     def export_page(self, page: dict):
@@ -238,9 +265,9 @@ class ConfluenceExporter:
         
         # Get HTML content
         html_content = page.get('body', {}).get('storage', {}).get('value', '')
-        
+
         # Handle draw.io embeds
-        html_content = self.handle_drawio_embeds(html_content, page_path)
+        html_content = self.handle_drawio_embeds(html_content)
         
         # Convert to markdown
         md_content = self.convert_to_markdown(html_content, url_mapping)
@@ -327,17 +354,30 @@ def main():
                         help='Atlassian API token')
     parser.add_argument('--output', default='./confluence_export',
                         help='Output directory')
-    
+    parser.add_argument('--since', type=str, default=None,
+                        help='Only export pages modified since this date (format: YYYY-MM-DD)')
+
     args = parser.parse_args()
-    
+
+    # Parse since date if provided
+    since_date = None
+    if args.since:
+        try:
+            since_date = datetime.strptime(args.since, '%Y-%m-%d')
+            print(f"Filtering pages modified since: {since_date.date()}")
+        except ValueError:
+            print(f"Error: Invalid date format '{args.since}'. Use YYYY-MM-DD (e.g., 2024-01-15)")
+            sys.exit(1)
+
     exporter = ConfluenceExporter(
         url=args.url,
         username=args.username,
         api_token=args.token,
         space_key=args.space,
-        output_dir=args.output
+        output_dir=args.output,
+        since_date=since_date
     )
-    
+
     exporter.export_space()
 
 
