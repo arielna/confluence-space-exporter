@@ -124,6 +124,9 @@ class ConfluenceExporter:
     
     def build_hierarchy(self, pages: list) -> dict:
         """Build a tree structure of pages based on parent-child relationships."""
+        # Build set of page IDs in the current export set
+        export_page_ids = {page['id'] for page in pages}
+
         # Find root pages (no ancestors in this space)
         roots = []
         children_map = {}  # parent_id -> list of child pages
@@ -135,8 +138,8 @@ class ConfluenceExporter:
             else:
                 # Find the immediate parent (last ancestor)
                 parent_id = ancestors[-1]['id']
-                # If parent is not in this space, treat as root
-                if parent_id not in self.pages_by_id:
+                # If parent is not in the export set, treat as root
+                if parent_id not in export_page_ids:
                     roots.append(page)
                 else:
                     if parent_id not in children_map:
