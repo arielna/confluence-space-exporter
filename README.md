@@ -9,6 +9,7 @@ Exports a Confluence space to local Markdown files with folder hierarchy and att
 - ✅ Converts HTML content to Markdown
 - ✅ Creates an index file with links to all pages
 - ✅ Handles labels/metadata
+- ✅ Filter by date to export only recently modified pages
 
 ## Prerequisites
 
@@ -18,16 +19,37 @@ Exports a Confluence space to local Markdown files with folder hierarchy and att
 
 ## Installation
 
+### Option 1: Using Virtual Environment (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/arielna/confluence-space-exporter.git
+cd confluence-space-exporter
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate  # On macOS/Linux
+# or
+venv\Scripts\activate     # On Windows
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Option 2: Direct Installation
+
 ```bash
 pip install atlassian-python-api markdownify requests
 ```
 
-(The script will auto-install these if missing)
+(The script will also auto-install dependencies if missing)
 
 ## Usage
 
 ```bash
-python confluence_export.py \
+python confluence-exporter.py \
   --username your.email@company.com \
   --token YOUR_API_TOKEN \
   --url https://centrica-bs.atlassian.net \
@@ -51,6 +73,7 @@ python confluence_export.py \
 To export only pages modified after a specific date:
 
 ```bash
+source venv/bin/activate  # If using virtual environment
 python confluence-exporter.py \
   --username your.email@company.com \
   --token YOUR_API_TOKEN \
